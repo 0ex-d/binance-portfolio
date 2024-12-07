@@ -1,0 +1,4 @@
+**/debug
+builds
+.DS_Store
+tmp
