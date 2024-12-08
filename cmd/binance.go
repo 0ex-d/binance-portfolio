@@ -67,9 +67,13 @@ type AccountInfo struct {
 	PreventSor                 bool            `json:"preventSor"`
 	UpdateTime                 int             `json:"updateTime"`
 	AccountType                string          `json:"accountType"`
-	Balances                   []Balance       `json:"balances"`
-	Permissions                []string        `json:"permissions"`
-	UID                        int             `json:"uid"`
+	Balances                   []struct {
+		Asset  string `json:"asset"`
+		Free   string `json:"free"`
+		Locked string `json:"locked"`
+	} `json:"balances"`
+	Permissions []string `json:"permissions"`
+	UID         int      `json:"uid"`
 }
 
 type CommissionRates struct {
@@ -80,9 +84,9 @@ type CommissionRates struct {
 }
 
 type Balance struct {
-	Asset  string `json:"asset"`
-	Free   string `json:"free"`
-	Locked string `json:"locked"`
+	Asset  string  `json:"asset"`
+	Free   float64 `json:"free"`
+	Locked float64 `json:"locked"`
 }
 
 func GetAllOrders(symbol string, limit string) ([]Order, error) {
@@ -157,40 +161,54 @@ func Get24HoursTickerPrice(symbol string) (float64, float64, error) {
 	return priceChange, lastPrice, nil
 }
 
-func GetAccount() (AccountInfo, error) {
+func GetAccountBalances() ([]Balance, error) {
 	var err error
-	var accountInfo AccountInfo
+	var balances []Balance
 	endpoint := "/account"
 	apiKey, secretKey := getApiAndSecretKeys()
 	timestamp := getTs()
 	queryString := fmt.Sprintf("omitZeroBalances=true&timestamp=%s", timestamp)
 	signature := signParams(queryString, secretKey)
 	url := fmt.Sprintf("%s%s?%s&signature=%s", binanceBaseURL, endpoint, queryString, signature)
-	log.Info("[getAccount]: ", url)
+	log.Info("[GetAccountBalances]: ", url)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return accountInfo, err
+		return balances, err
 	}
 	req.Header.Add("X-MBX-APIKEY", apiKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return accountInfo, err
+		return balances, err
 	}
 	defer resp.Body.Close()
 	var body []byte
 	body, err = io.ReadAll(resp.Body)
 	if err != nil {
-		return accountInfo, err
+		return balances, err
 	}
 	if resp.StatusCode != 200 {
-		return accountInfo, errors.New("")
+		return balances, errors.New("")
 	}
-	if err := json.Unmarshal(body, &accountInfo); err != nil {
-		log.Error("error decoding JSON", err)
-		return accountInfo, err
+
+	var result AccountInfo
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return balances, err
 	}
-	return accountInfo, nil
+	for _, balance := range result.Balances {
+		freeBalance, err := strconv.ParseFloat(balance.Free, 64)
+		if err != nil {
+			continue
+		}
+		lockedBalance, err := strconv.ParseFloat(balance.Locked, 64)
+		if err != nil {
+			lockedBalance = 0
+		}
+		balances = append(balances, Balance{Asset: balance.Asset, Free: freeBalance, Locked: lockedBalance})
+
+	}
+	return balances, nil
 }
 
 func GetAccountBalance(asset string) (float64, error) {

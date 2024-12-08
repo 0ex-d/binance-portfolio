@@ -88,14 +88,14 @@ func calculateRealizedPNL(trades []Trade, avgBuyPrice float64) (float64, error) 
 }
 
 func getTotalPortfolioValue(currency string) (float64, error) {
-	accountInfo, err := GetAccount()
+	balances, err := GetAccountBalances()
 	if err != nil {
 		return 0, err
 	}
 
 	var totalValue float64
 	var instruments []string
-	for _, balance := range accountInfo.Balances {
+	for _, balance := range balances {
 		if balance.Asset == "USDT" || balance.Asset == "GBP" || balance.Asset == "USD" {
 			continue
 		}
@@ -105,14 +105,13 @@ func getTotalPortfolioValue(currency string) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	for _, balance := range accountInfo.Balances {
+	for _, balance := range balances {
 		if balance.Asset == "USDT" || balance.Asset == "GBP" || balance.Asset == "USD" {
 			continue
 		}
 		instrument := fmt.Sprintf("%s-%s", balance.Asset, currency)
 		currentInstrument := spotResponse.Data[instrument]
-		balanceFree, _ := strconv.ParseFloat(balance.Free, 64)
-		assetValue := balanceFree * currentInstrument.Price
+		assetValue := balance.Free * currentInstrument.Price
 		totalValue += assetValue
 	}
 	return totalValue, nil
@@ -309,8 +308,7 @@ func main() {
 		}})
 	})
 	e.GET("/account", func(c echo.Context) error {
-		var data AccountInfo
-		data, err = GetAccount()
+		data, _ := GetAccountBalances()
 		return c.JSON(200, data)
 	})
 
