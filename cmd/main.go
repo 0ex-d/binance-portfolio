@@ -74,7 +74,7 @@ type PortfolioBalance struct {
 	Locked             float64 `json:"locked"`
 	Price              float64 `json:"price"`
 	PriceFlag          string  `json:"price_flag"`
-	PriceChangeValue   float64 `json:"price_change_value_"`
+	PriceChangeValue   float64 `json:"price_change_value"`
 	PriceChangePercent float64 `json:"price_change_percent"`
 	QuoteValue         float64 `json:"quote_value"`
 }
@@ -84,6 +84,8 @@ func signParams(message, secret string) string {
 	mac.Write([]byte(message))
 	return hex.EncodeToString(mac.Sum(nil))
 }
+
+var portfolioBalancesInMemory []PortfolioBalance
 
 func calculateRealizedPNL(trades []Trade, avgBuyPrice float64) (float64, error) {
 	var realizedPNL float64
@@ -99,8 +101,15 @@ func calculateRealizedPNL(trades []Trade, avgBuyPrice float64) (float64, error) 
 }
 
 func getPortfolioBalancesAndCCData(currency string) ([]PortfolioBalance, error) {
+	var err error
+	var balances []Balance
 	var portfolioBalances []PortfolioBalance
-	balances, err := GetAccountBalances()
+	if len(portfolioBalancesInMemory) != 0 {
+		log.Info("[getPortfolioBalancesAndCCData]: Getting from memory")
+		return portfolioBalancesInMemory, err
+	}
+
+	balances, err = GetAccountBalances()
 	if err != nil {
 		return portfolioBalances, err
 	}
@@ -138,10 +147,12 @@ func getPortfolioBalancesAndCCData(currency string) ([]PortfolioBalance, error) 
 			PriceChangeValue:   currentInstrument.CurrentDayChange,
 			PriceChangePercent: currentInstrument.CurrentDayChangePercentage,
 		})
-		sort.Slice(portfolioBalances, func(i, j int) bool {
-			return portfolioBalances[i].Free > portfolioBalances[j].Free
-		})
 	}
+	sort.Slice(portfolioBalances, func(i, j int) bool {
+		return portfolioBalances[i].Free > portfolioBalances[j].Free
+	})
+	portfolioBalancesInMemory = portfolioBalances
+
 	return portfolioBalances, nil
 }
 
