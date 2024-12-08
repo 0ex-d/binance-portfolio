@@ -61,10 +61,9 @@ func getTs() string {
 
 type Prices []float64
 
-type stas[T float64 | int] interface {
-}
-type RESTResp struct {
-	Data map[string]interface{}
+type stas[T float64 | int] interface{}
+type RESTResp[T interface{} | map[string]interface{}] struct {
+	Data T
 	Err  interface{}
 }
 
@@ -277,7 +276,7 @@ func main() {
 		}
 		portfolioAllocation := (totalValue / totalPortfolioValue) * 100
 
-		return c.JSON(200, RESTResp{Data: map[string]interface{}{
+		return c.JSON(200, RESTResp[map[string]interface{}]{Data: map[string]interface{}{
 			"LAST_PRICE": lastPrice,
 			"COUNT": map[string]float64{
 				"BUY":  totalBuyQty,
@@ -308,8 +307,12 @@ func main() {
 		}})
 	})
 	e.GET("/account", func(c echo.Context) error {
-		data, _ := GetAccountBalances()
-		return c.JSON(200, data)
+		var balances []Balance
+		balances, err := GetAccountBalances()
+		if err != nil {
+			return c.JSON(400, RESTResp[[]Balance]{Data: balances, Err: errors.New("error getting balances")})
+		}
+		return c.JSON(200, RESTResp[[]Balance]{Data: balances})
 	})
 
 	e.GET("/", func(c echo.Context) error {
