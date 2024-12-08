@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -67,11 +68,15 @@ type RESTResp[T interface{} | map[string]interface{}] struct {
 }
 
 type PortfolioBalance struct {
-	Symbol string  `json:"symbol"`
-	Free   float64 `json:"free"`
-	Locked float64 `json:"locked"`
-	Price  float64 `json:"price"`
-	Value  float64 `json:"value"`
+	Symbol             string  `json:"symbol"`
+	QuoteSymbol        string  `json:"quote_symbol"`
+	Free               float64 `json:"free"`
+	Locked             float64 `json:"locked"`
+	Price              float64 `json:"price"`
+	PriceFlag          string  `json:"price_flag"`
+	PriceChangeValue   float64 `json:"price_change_value_"`
+	PriceChangePercent float64 `json:"price_change_percent"`
+	QuoteValue         float64 `json:"quote_value"`
 }
 
 func signParams(message, secret string) string {
@@ -114,16 +119,27 @@ func getPortfolioBalancesAndCCData(currency string) ([]PortfolioBalance, error) 
 
 	for _, balance := range balances {
 		if balance.Asset == "USDT" || balance.Asset == "GBP" || balance.Asset == "USD" || balance.Asset == currency {
+			portfolioBalances = append(portfolioBalances, PortfolioBalance{
+				Symbol: balance.Asset,
+				Free:   balance.Free,
+			})
 			continue
 		}
 		instrument := fmt.Sprintf("%s-%s", balance.Asset, currency)
 		currentInstrument := spotResponse.Data[instrument]
 		assetValue := balance.Free * currentInstrument.Price
 		portfolioBalances = append(portfolioBalances, PortfolioBalance{
-			Symbol: balance.Asset,
-			Free:   balance.Free,
-			Value:  assetValue,
-			Price:  currentInstrument.Price,
+			Symbol:             balance.Asset,
+			QuoteSymbol:        currency,
+			Free:               balance.Free,
+			QuoteValue:         assetValue,
+			Price:              currentInstrument.Price,
+			PriceFlag:          currentInstrument.PriceFlag,
+			PriceChangeValue:   currentInstrument.CurrentDayChange,
+			PriceChangePercent: currentInstrument.CurrentDayChangePercentage,
+		})
+		sort.Slice(portfolioBalances, func(i, j int) bool {
+			return portfolioBalances[i].Free > portfolioBalances[j].Free
 		})
 	}
 	return portfolioBalances, nil
@@ -206,19 +222,12 @@ func main() {
 
 	e.GET("/wallet", func(c echo.Context) error {
 		var balances []PortfolioBalance
-		balances, err := getPortfolioBalancesAndCCData("USDT")
+		currency := "USDT"
+		balances, err := getPortfolioBalancesAndCCData(currency)
 		if err != nil {
 			return c.JSON(400, RESTResp[[]PortfolioBalance]{Data: balances, Err: errors.New("error getting balances")})
 		}
 		return c.JSON(200, RESTResp[[]PortfolioBalance]{Data: balances})
-	})
-	e.GET("/balances", func(c echo.Context) error {
-		var balances []Balance
-		balances, err := GetAccountBalances()
-		if err != nil {
-			return c.JSON(400, RESTResp[[]Balance]{Data: balances, Err: errors.New("error getting balances")})
-		}
-		return c.JSON(200, RESTResp[[]Balance]{Data: balances})
 	})
 
 	e.GET("/", func(c echo.Context) error {
