@@ -1,4 +1,4 @@
 build:
-	go build -o builds/myapp cmd/main.go
+	go build -o build/main cmd/*.go
 run:
-	go run cmd/main.go
+	go run cmd/*.go

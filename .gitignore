@@ -4,3 +4,5 @@ builds
 tmp
 build
 go.sum
+*.json
+!.vscode/*
