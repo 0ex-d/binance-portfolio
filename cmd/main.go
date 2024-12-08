@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -17,7 +16,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 type Template struct {
@@ -67,6 +66,14 @@ type RESTResp[T interface{} | map[string]interface{}] struct {
 	Err  interface{}
 }
 
+type PortfolioBalance struct {
+	Symbol string  `json:"symbol"`
+	Free   float64 `json:"free"`
+	Locked float64 `json:"locked"`
+	Price  float64 `json:"price"`
+	Value  float64 `json:"value"`
+}
+
 func signParams(message, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(message))
@@ -84,6 +91,42 @@ func calculateRealizedPNL(trades []Trade, avgBuyPrice float64) (float64, error) 
 		realizedPNL += (tradePrice - avgBuyPrice) * tradeQty
 	}
 	return realizedPNL, nil
+}
+
+func getPortfolioBalancesAndCCData(currency string) ([]PortfolioBalance, error) {
+	var portfolioBalances []PortfolioBalance
+	balances, err := GetAccountBalances()
+	if err != nil {
+		return portfolioBalances, err
+	}
+
+	var ccDataInstruments []string
+	for _, balance := range balances {
+		if balance.Asset == "USDT" || balance.Asset == "GBP" || balance.Asset == "USD" || balance.Asset == currency {
+			continue
+		}
+		ccDataInstruments = append(ccDataInstruments, fmt.Sprintf("%s-%s", balance.Asset, currency))
+	}
+	spotResponse, err := GetCCDataCurrentTickerPrice(strings.Join(ccDataInstruments, ","), os.Getenv("CC_API_KEY"))
+	if err != nil {
+		return portfolioBalances, err
+	}
+
+	for _, balance := range balances {
+		if balance.Asset == "USDT" || balance.Asset == "GBP" || balance.Asset == "USD" || balance.Asset == currency {
+			continue
+		}
+		instrument := fmt.Sprintf("%s-%s", balance.Asset, currency)
+		currentInstrument := spotResponse.Data[instrument]
+		assetValue := balance.Free * currentInstrument.Price
+		portfolioBalances = append(portfolioBalances, PortfolioBalance{
+			Symbol: balance.Asset,
+			Free:   balance.Free,
+			Value:  assetValue,
+			Price:  currentInstrument.Price,
+		})
+	}
+	return portfolioBalances, nil
 }
 
 func getTotalPortfolioValue(currency string) (float64, error) {
@@ -146,6 +189,7 @@ func main() {
 		data, err = GetAllOrders(symbol, limit)
 		return c.JSON(200, data)
 	})
+
 	e.GET("/trades", func(c echo.Context) error {
 		symbol := c.QueryParam("symbol")
 		limit := c.QueryParam("limit")
@@ -159,154 +203,16 @@ func main() {
 		data, err = GetTradesList(symbol, limit)
 		return c.JSON(200, data)
 	})
-	e.GET("/portfolio", func(c echo.Context) error {
-		pair := c.QueryParam("pair")
-		limit := c.QueryParam("limit")
-		currency := c.QueryParam("currency")
-		if strings.TrimSpace(pair) == "" {
-			return c.JSON(400, map[string]interface{}{"Err": "strange input", "Data": nil})
-		}
-		if strings.TrimSpace(limit) == "" {
-			limit = "1000"
-		}
-		if strings.TrimSpace(currency) == "" {
-			currency = "USDT"
-		}
-		b := strings.Split(pair, "-")
-		if len(b) != 2 {
-			return c.JSON(400, map[string]interface{}{"Err": "strange input", "Data": nil})
-		}
-		asset := b[0]
-		symbol := strings.Join(b, "")
-		price, err := GetCurrentTickerPrice(symbol)
+
+	e.GET("/wallet", func(c echo.Context) error {
+		var balances []PortfolioBalance
+		balances, err := getPortfolioBalancesAndCCData("USDT")
 		if err != nil {
-			logrus.Error("Error fetching current price:", err)
-			return c.JSON(400, map[string]interface{}{"Err": ErrorGenericResp.Error(), "Data": nil})
+			return c.JSON(400, RESTResp[[]PortfolioBalance]{Data: balances, Err: errors.New("error getting balances")})
 		}
-		balance, err := GetAccountBalance(asset)
-		if err != nil {
-			logrus.Error("Error fetching account balance:", err)
-			return c.JSON(400, map[string]interface{}{"Err": ErrorGenericResp.Error(), "Data": nil})
-		}
-		totalValue := balance * price
-		var trades []Trade
-		trades, err = GetTradesList(symbol, limit)
-		if err != nil {
-			logrus.Error("Error fetching trades:", err)
-			return c.JSON(400, map[string]interface{}{"Err": ErrorGenericResp.Error(), "Data": nil})
-		}
-		var totalCost, totalGain, totalBuyQty, totalSaleQty float64
-		var totalLpTakerQty, totalLpMakerQty int
-
-		lastBuyPrice := 0.0
-		lastBuyPriceTs := 0
-		highestBuyPrice := 0.0
-		lowestBuyPrice := 0.0
-		lastSalePrice := 0.0
-		lastSalePriceTs := 0
-		highestSalePrice := 0.0
-		lowestSalePrice := 0.0
-		var buyTrades, sellTrades []Trade
-		for _, trade := range trades {
-			if !trade.IsBuyer {
-				sellTrades = append(sellTrades, trade)
-				totalSaleQty++
-			}
-			if trade.IsBuyer {
-				buyTrades = append(buyTrades, trade)
-				totalBuyQty++
-			}
-			if trade.IsMaker {
-				totalLpMakerQty++
-			}
-			if !trade.IsMaker {
-				totalLpTakerQty++
-			}
-		}
-
-		for i, trade := range buyTrades {
-			price, _ := strconv.ParseFloat(trade.Price, 64)
-			if price > highestBuyPrice {
-				highestBuyPrice = price
-			}
-			if i == 0 || price < lowestBuyPrice {
-				lowestBuyPrice = price
-			}
-			if i == len(buyTrades)-1 {
-				lastBuyPrice = price
-				lastBuyPriceTs = trade.Time
-			}
-			totalCost += price
-		}
-		for i, trade := range sellTrades {
-			price, _ := strconv.ParseFloat(trade.Price, 64)
-			if price > highestSalePrice {
-				highestSalePrice = price
-			}
-			if i == 0 || price < lowestSalePrice {
-				lowestSalePrice = price
-			}
-			if i == len(sellTrades)-1 {
-				lastSalePrice = price
-				lastSalePriceTs = trade.Time
-			}
-			totalGain += price
-		}
-
-		avgBuyPrice := totalCost / totalBuyQty
-		priceChange, lastPrice, err := Get24HoursTickerPrice(symbol)
-		if err != nil {
-			logrus.Error("Error fetching 24-hour stats:", err)
-			return c.JSON(400, map[string]interface{}{"Err": ErrorGenericResp.Error(), "Data": nil})
-
-		}
-		dailyPNL := balance * priceChange
-		unrealizedPNL := (price - avgBuyPrice) * balance
-		realizedPNL, err := calculateRealizedPNL(trades, avgBuyPrice)
-		if err != nil {
-			logrus.Error("Error calculating realized PNL:", err)
-			return c.JSON(400, map[string]interface{}{"Err": ErrorGenericResp.Error(), "Data": nil})
-
-		}
-		totalPortfolioValue, err := getTotalPortfolioValue(currency)
-		if err != nil {
-			logrus.Error("Error calculating total portfolio value:", err)
-			return c.JSON(400, map[string]interface{}{"Err": ErrorGenericResp.Error(), "Data": nil})
-
-		}
-		portfolioAllocation := (totalValue / totalPortfolioValue) * 100
-
-		return c.JSON(200, RESTResp[map[string]interface{}]{Data: map[string]interface{}{
-			"LAST_PRICE": lastPrice,
-			"COUNT": map[string]float64{
-				"BUY":  totalBuyQty,
-				"SALE": totalSaleQty,
-			},
-			"BUY_PRICE": map[string]stas[int]{
-				"LAST":    lastBuyPrice,
-				"LAST_TS": lastBuyPriceTs,
-				"HIGHEST": highestBuyPrice,
-				"LOWEST":  lowestBuyPrice,
-			},
-			"SALE_PRICE": map[string]stas[int]{
-				"LAST":    lastSalePrice,
-				"LAST_TS": lastSalePriceTs,
-				"HIGHEST": highestSalePrice,
-				"LOWEST":  lowestSalePrice,
-			},
-			"LP_STATS": map[string]int{
-				"totalLpMakerQty": totalLpMakerQty,
-				"totalLpTakerQty": totalLpTakerQty,
-			},
-			"TOTAL_VALUE":                  totalValue,
-			"AVG_BUY_PRICE":                avgBuyPrice,
-			"DAILY_PNL":                    dailyPNL,
-			"UNREALIZED_PNL":               unrealizedPNL,
-			"REALIZED_PNL":                 realizedPNL,
-			"PORTFOLIO_ALLOCATION_PERCENT": portfolioAllocation,
-		}})
+		return c.JSON(200, RESTResp[[]PortfolioBalance]{Data: balances})
 	})
-	e.GET("/account", func(c echo.Context) error {
+	e.GET("/balances", func(c echo.Context) error {
 		var balances []Balance
 		balances, err := GetAccountBalances()
 		if err != nil {

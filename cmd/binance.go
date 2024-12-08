@@ -87,9 +87,11 @@ type Balance struct {
 	Asset  string  `json:"asset"`
 	Free   float64 `json:"free"`
 	Locked float64 `json:"locked"`
+	Price  float64 `json:"price"`
 }
 
 func GetAllOrders(symbol string, limit string) ([]Order, error) {
+	startTs := time.Now()
 	var err error
 	var orders []Order
 	endpoint := "/allOrders"
@@ -110,6 +112,7 @@ func GetAllOrders(symbol string, limit string) ([]Order, error) {
 		return orders, err
 	}
 	defer resp.Body.Close()
+	log.Infof("[GetAllOrders]: took: %v seconds", time.Since(startTs).Seconds())
 	var body []byte
 	body, err = io.ReadAll(resp.Body)
 	if err != nil {
@@ -133,6 +136,7 @@ func GetAllOrders(symbol string, limit string) ([]Order, error) {
 }
 
 func Get24HoursTickerPrice(symbol string) (float64, float64, error) {
+	startTs := time.Now()
 	url := fmt.Sprintf("%s/ticker/24hr?symbol=%s", binanceBaseURL, symbol)
 	log.Info("[get24HoursTickerPrice]: ", url)
 	resp, err := http.Get(url)
@@ -140,7 +144,7 @@ func Get24HoursTickerPrice(symbol string) (float64, float64, error) {
 		return 0, 0, err
 	}
 	defer resp.Body.Close()
-
+	log.Infof("[Get24HoursTickerPrice]: took: %v seconds", time.Since(startTs).Seconds())
 	var stats struct {
 		PriceChange string `json:"priceChange"`
 		LastPrice   string `json:"lastPrice"`
@@ -162,6 +166,7 @@ func Get24HoursTickerPrice(symbol string) (float64, float64, error) {
 }
 
 func GetAccountBalances() ([]Balance, error) {
+	startTs := time.Now()
 	var err error
 	var balances []Balance
 	endpoint := "/account"
@@ -182,6 +187,7 @@ func GetAccountBalances() ([]Balance, error) {
 		return balances, err
 	}
 	defer resp.Body.Close()
+	log.Infof("[GetCCDataCurrentTickerPrice]: took: %v seconds", time.Since(startTs).Seconds())
 	var body []byte
 	body, err = io.ReadAll(resp.Body)
 	if err != nil {
@@ -212,6 +218,7 @@ func GetAccountBalances() ([]Balance, error) {
 }
 
 func GetAccountBalance(asset string) (float64, error) {
+	startTs := time.Now()
 	timestamp := time.Now().UnixMilli()
 	queryString := fmt.Sprintf("omitZeroBalances=true&timestamp=%d", timestamp)
 	apiKey, secretKey := getApiAndSecretKeys()
@@ -227,7 +234,7 @@ func GetAccountBalance(asset string) (float64, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
-
+	log.Infof("[GetAccountBalance]: took: %v seconds", time.Since(startTs).Seconds())
 	body, _ := io.ReadAll(resp.Body)
 	var result struct {
 		Balances []struct {
@@ -254,6 +261,7 @@ func GetAccountBalance(asset string) (float64, error) {
 }
 
 func GetCurrentTickerPrice(symbol string) (float64, error) {
+	startTs := time.Now()
 	url := fmt.Sprintf("%s/ticker/price?symbol=%s", binanceBaseURL, symbol)
 	log.Info("[getCurrentTickerPrice]: ", url)
 	resp, err := http.Get(url)
@@ -261,7 +269,7 @@ func GetCurrentTickerPrice(symbol string) (float64, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
-
+	log.Infof("[GetCurrentTickerPrice]: took: %v seconds", time.Since(startTs).Seconds())
 	var result struct {
 		Price string `json:"price"`
 	}
@@ -278,6 +286,7 @@ func GetCurrentTickerPrice(symbol string) (float64, error) {
 }
 
 func GetTradesList(symbol string, limit string) ([]Trade, error) {
+	startTs := time.Now()
 	var err error
 	var trades []Trade
 	endpoint := "/myTrades"
@@ -298,6 +307,7 @@ func GetTradesList(symbol string, limit string) ([]Trade, error) {
 		return trades, err
 	}
 	defer resp.Body.Close()
+	log.Infof("[GetTradesList]: took: %v seconds", time.Since(startTs).Seconds())
 	var body []byte
 	body, err = io.ReadAll(resp.Body)
 	if err != nil {

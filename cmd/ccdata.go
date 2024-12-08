@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -27,6 +28,7 @@ type CCDataSpotInstrumentData struct {
 }
 
 func GetCCDataCurrentTickerPrice(instruments, apiKey string) (CCDataResponse, error) {
+	startTs := time.Now()
 	url := fmt.Sprintf("%s/spot/v1/latest/tick?market=binance&instruments=%s&apply_mapping=false&groups=ID,VALUE&api_key=%s", ccDataBaseURL, instruments, apiKey)
 	log.Info("[GetCCDataCurrentTickerPrice]: ", url)
 	data := CCDataResponse{}
@@ -35,6 +37,7 @@ func GetCCDataCurrentTickerPrice(instruments, apiKey string) (CCDataResponse, er
 		return data, err
 	}
 	defer resp.Body.Close()
+	log.Infof("[GetCCDataCurrentTickerPrice]: took: %v seconds", time.Since(startTs).Seconds())
 	if resp.StatusCode != 200 {
 		return data, errors.New("error fetching from ccdata.io")
 	}
