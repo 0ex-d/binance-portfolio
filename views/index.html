@@ -1,0 +1,93 @@
+{{ block "scripts" . }}
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+{{ end }} {{ block "index" . }}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title></title>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        {{ template "scripts" . }}
+        <style>
+            body,
+            input,
+            button,
+            select,
+            textarea {
+                background-color: #1a202c; /* Dark background */
+                color: #cbd5e1; /* Light text */
+            }
+            .bg-darkprimary {
+                --tw-bg-opacity: 1;
+                background-color: rgb(17 24 39 / var(--tw-bg-opacity));
+            }
+            .border-darkprimary {
+                --tw-border-opacity: 1;
+                border-color: rgb(31 41 55 / var(--tw-border-opacity));
+            }
+            .bg-darksecondary {
+                --tw-bg-opacity: 1;
+                background-color: rgb(31 41 55 / var(--tw-bg-opacity));
+            }
+            .border-darksecondary {
+                --tw-border-opacity: 1;
+                border-color: rgb(55 65 81 / var(--tw-border-opacity));
+            }
+        </style>
+        <script>
+            const humanReadableNumber = (numberToTransform, digits = 2, type = "prettify", isChart = false) => {
+                if (type === "prettify") {
+                    if (numberToTransform !== undefined && numberToTransform !== null && isNaN(numberToTransform) === false) {
+                        return numberToTransform.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+                    }
+                    return "-";
+                }
+                if (type === "shortify") {
+                    if (numberToTransform !== undefined && numberToTransform !== null && isNaN(numberToTransform) === false) {
+                        return nFormatter(numberToTransform, digits);
+                    }
+                    return "-";
+                }
+                if (type === "sigfig") {
+                    let prefix = "";
+                    if (Number(numberToTransform) < 0) {
+                        prefix = "-";
+                        numberToTransform = Math.abs(numberToTransform);
+                    }
+                    if (numberToTransform === null || numberToTransform === undefined) return "-";
+                    if (numberToTransform === 0) return 0;
+                    if (numberToTransform >= 10) return prefix + numberToTransform.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+                    if (numberToTransform >= 1.0) return prefix + numberToTransform.toLocaleString(undefined, { maximumFractionDigits: isChart ? digits : 2, minimumFractionDigits: isChart ? digits : 2 });
+
+                    const ldigits = Math.floor(Math.log10(Math.abs(numberToTransform))) + 1;
+                    const scale = Math.pow(10, digits - ldigits);
+
+                    const roundedNumber = Math.floor(numberToTransform * scale) / scale;
+                    let formattedNumber = roundedNumber.toPrecision(digits);
+                    if (formattedNumber < 0.001) {
+                        formattedNumber = formatWithLeadingZeroSubscript(formattedNumber, digits);
+                    }
+                    return prefix + formattedNumber;
+                }
+            };
+            function closeModal() {
+                document.querySelector('[jsid="errorModal"]').classList.add("hidden");
+            }
+        </script>
+    </head>
+    <body class="bg-gray-800 text-white">
+        {{ template "portfolio-assets" . }}
+        <div class="fixed inset-0 bg-gray-600 bg-opacity-50 h-full w-full flex justify-center items-center hidden" jsid="errorModal">
+            <div class="bg-white p-4 rounded-lg shadow-lg">
+                <div class="flex justify-between items-center">
+                    <h4 class="text-lg font-semibold">Error</h4>
+                    <button onclick="closeModal()" class="text-gray-800 font-bold">X</button>
+                </div>
+                <p class="text-red-500 mt-2">Something went wrong. Please try again later.</p>
+                <button onclick="closeModal()" class="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-700">Close</button>
+            </div>
+        </div>
+    </body>
+</html>
+{{ end }}

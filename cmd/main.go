@@ -61,6 +61,13 @@ func getTs() string {
 
 type Prices []float64
 
+type stas[T float64 | int] interface {
+}
+type RESTResp struct {
+	Data map[string]interface{}
+	Err  interface{}
+}
+
 func signParams(message, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(message))
@@ -78,25 +85,6 @@ func calculateRealizedPNL(trades []Trade, avgBuyPrice float64) (float64, error) 
 		realizedPNL += (tradePrice - avgBuyPrice) * tradeQty
 	}
 	return realizedPNL, nil
-}
-
-func _getTotalPortfolioValue(currency string) (float64, error) {
-	accountInfo, err := GetAccount()
-	if err != nil {
-		return 0, err
-	}
-
-	var totalValue float64
-	for _, balance := range accountInfo.Balances {
-		price, err := GetCurrentTickerPrice(fmt.Sprintf("%%s", balance.Asset, currency))
-		if err != nil {
-			continue
-		}
-		balanceFree, _ := strconv.ParseFloat(balance.Free, 64)
-		assetValue := balanceFree * price
-		totalValue += assetValue
-	}
-	return totalValue, nil
 }
 
 func getTotalPortfolioValue(currency string) (float64, error) {
@@ -173,7 +161,7 @@ func main() {
 		data, err = GetTradesList(symbol, limit)
 		return c.JSON(200, data)
 	})
-	e.GET("/calc", func(c echo.Context) error {
+	e.GET("/portfolio", func(c echo.Context) error {
 		pair := c.QueryParam("pair")
 		limit := c.QueryParam("limit")
 		currency := c.QueryParam("currency")
@@ -290,9 +278,7 @@ func main() {
 		}
 		portfolioAllocation := (totalValue / totalPortfolioValue) * 100
 
-		type stas[T float64 | int] interface {
-		}
-		return c.JSON(200, map[string]interface{}{
+		return c.JSON(200, RESTResp{Data: map[string]interface{}{
 			"LAST_PRICE": lastPrice,
 			"COUNT": map[string]float64{
 				"BUY":  totalBuyQty,
@@ -320,7 +306,7 @@ func main() {
 			"UNREALIZED_PNL":               unrealizedPNL,
 			"REALIZED_PNL":                 realizedPNL,
 			"PORTFOLIO_ALLOCATION_PERCENT": portfolioAllocation,
-		})
+		}})
 	})
 	e.GET("/account", func(c echo.Context) error {
 		var data AccountInfo
