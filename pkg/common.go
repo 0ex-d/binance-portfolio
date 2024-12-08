@@ -196,20 +196,14 @@ func calculateRealizedPNL(trades []Trade, avgBuyPrice float64) (float64, error) 
 	return realizedPNL, nil
 }
 
-func GetWalletBalancesAndCCData(currency string, walletBalancesInMemory []*WalletBalance) ([]*WalletBalance, error) {
+func GetWalletBalancesAndCCData(currency string) ([]*WalletBalance, error) {
 	var err error
 	var balances []Balance
 	var portfolioBalances []*WalletBalance
-	if len(walletBalancesInMemory) != 0 {
-		log.Info("[getWalletBalancesAndCCData]: Getting from memory")
-		return walletBalancesInMemory, err
-	}
-
 	balances, err = GetAccountBalances()
 	if err != nil {
 		return portfolioBalances, err
 	}
-
 	var ccDataInstruments []string
 	for _, balance := range balances {
 		if balance.Asset == "USDT" || balance.Asset == "GBP" || balance.Asset == "USD" || balance.Asset == currency {
@@ -221,7 +215,6 @@ func GetWalletBalancesAndCCData(currency string, walletBalancesInMemory []*Walle
 	if err != nil {
 		return portfolioBalances, err
 	}
-
 	for _, balance := range balances {
 		if balance.Asset == "USDT" || balance.Asset == "GBP" || balance.Asset == "USD" || balance.Asset == currency {
 			portfolioBalances = append(portfolioBalances, &WalletBalance{
@@ -247,52 +240,18 @@ func GetWalletBalancesAndCCData(currency string, walletBalancesInMemory []*Walle
 	sort.Slice(portfolioBalances, func(i, j int) bool {
 		return portfolioBalances[i].Free > portfolioBalances[j].Free
 	})
-	walletBalancesInMemory = portfolioBalances
 	return portfolioBalances, nil
 }
 
-func GetPortfolioBalancesAndCCData(currency string, portfolioBalancesInMemory []*PortfolioBalance, assetToTradesInMemory map[string][]Trade) ([]*PortfolioBalance, error) {
+func GetPortfolioBalancesAndCCData(currency string, walletBalances []*WalletBalance, assetToTradesInMemory map[string][]Trade) ([]*PortfolioBalance, error) {
 	var err error
-	var balances []Balance
 	var portfolioBalances []*PortfolioBalance
-	if len(portfolioBalancesInMemory) != 0 {
-		log.Info("[getPortfolioBalancesAndCCData]: Getting from memory")
-		return portfolioBalancesInMemory, err
-	}
-
-	balances, err = GetAccountBalances()
-	if err != nil {
-		return portfolioBalances, err
-	}
-
-	var ccDataInstruments []string
-	for _, balance := range balances {
-		if balance.Asset == "USDT" || balance.Asset == "GBP" || balance.Asset == "USD" || balance.Asset == currency {
-			continue
-		}
-		ccDataInstruments = append(ccDataInstruments, fmt.Sprintf("%s-%s", balance.Asset, currency))
-	}
-	spotResponse, err := GetCCDataCurrentTickerPrice(strings.Join(ccDataInstruments, ","), os.Getenv("CC_API_KEY"))
-	if err != nil {
-		return portfolioBalances, err
-	}
-
-	for _, balance := range balances {
-		if balance.Asset == "USDT" || balance.Asset == "GBP" || balance.Asset == "USD" || balance.Asset == currency {
-			portfolioBalances = append(portfolioBalances, &PortfolioBalance{
-				Symbol: balance.Asset,
-				Free:   balance.Free,
-			})
-			continue
-		}
-		ccInstrument := fmt.Sprintf("%s-%s", balance.Asset, currency)
-		binanceInstrument := fmt.Sprintf("%s%s", balance.Asset, currency)
-		currentInstrument := spotResponse.Data[ccInstrument]
-		assetValue := balance.Free * currentInstrument.Price
-
+	for _, balance := range walletBalances {
+		binanceInstrument := fmt.Sprintf("%s%s", balance.Symbol, currency)
 		if _, ok := assetToTradesInMemory[binanceInstrument]; !ok {
 			log.Warnf("%s: not in memory. fetching API", binanceInstrument)
-			assetTrades, err := GetTradesList(binanceInstrument, "1000")
+			var assetTrades []Trade
+			assetTrades, err = GetTradesList(binanceInstrument, "1000")
 			if err != nil {
 				log.Errorf("%s: Error fetching trades: %v", binanceInstrument, err)
 				continue
@@ -307,20 +266,19 @@ func GetPortfolioBalancesAndCCData(currency string, portfolioBalancesInMemory []
 		// var totalLpTakerQty, totalLpMakerQty int
 
 		portfolioBalances = append(portfolioBalances, &PortfolioBalance{
-			Symbol:             balance.Asset,
-			QuoteSymbol:        currency,
-			Free:               balance.Free,
-			QuoteValue:         assetValue,
-			Price:              currentInstrument.Price,
-			PriceFlag:          currentInstrument.PriceFlag,
-			PriceChangeValue:   currentInstrument.CurrentDayChange,
-			PriceChangePercent: currentInstrument.CurrentDayChangePercentage,
-			TradeStats:         tradeStats,
+			Symbol:      balance.Symbol,
+			QuoteSymbol: currency,
+			Free:        balance.Free,
+			QuoteValue:  balance.QuoteValue,
+			Price:       balance.Price,
+			PriceFlag:   balance.PriceFlag,
+			// PriceChangeValue:   balance.CurrentDayChange,
+			// PriceChangePercent: balance.CurrentDayChangePercentage,
+			TradeStats: tradeStats,
 		})
 	}
 	sort.Slice(portfolioBalances, func(i, j int) bool {
 		return portfolioBalances[i].Free > portfolioBalances[j].Free
 	})
-	portfolioBalancesInMemory = portfolioBalances
 	return portfolioBalances, nil
 }

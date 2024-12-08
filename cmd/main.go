@@ -9,7 +9,6 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	log "github.com/sirupsen/logrus"
 	"goland.local/binance-portfolio/pkg"
 )
@@ -58,7 +57,6 @@ func main() {
 		tmpls: template.Must(template.ParseGlob("views/*.html")),
 	}
 
-	e.Use(middleware.Logger())
 	e.Static("/src", "src")
 
 	e.GET("/orders", func(c echo.Context) error {
@@ -90,9 +88,20 @@ func main() {
 	})
 
 	e.GET("/portfolio", func(c echo.Context) error {
+		var err error
 		var balances []*pkg.PortfolioBalance
 		currency := "USDT"
-		balances, err := pkg.GetPortfolioBalancesAndCCData(currency, portfolioBalancesInMemory, assetToTradesInMemory)
+		if len(walletBalancesInMemory) != 0 {
+			log.Info("[getWalletBalancesAndCCData]: Getting from memory")
+		} else {
+			walletBalances, err := pkg.GetWalletBalancesAndCCData(currency)
+			if err != nil {
+				return c.JSON(200, pkg.RESTResp[[]*pkg.WalletBalance]{Data: walletBalancesInMemory})
+			}
+			walletBalancesInMemory = walletBalances
+		}
+
+		balances, err = pkg.GetPortfolioBalancesAndCCData(currency, walletBalancesInMemory, assetToTradesInMemory)
 		if err != nil {
 			return c.JSON(400, pkg.RESTResp[[]*pkg.PortfolioBalance]{Data: balances, Err: errors.New("error getting balances")})
 		}
@@ -101,7 +110,12 @@ func main() {
 	e.GET("/wallet", func(c echo.Context) error {
 		var balances []*pkg.WalletBalance
 		currency := "USDT"
-		balances, err := pkg.GetWalletBalancesAndCCData(currency, walletBalancesInMemory)
+		if len(walletBalancesInMemory) != 0 {
+			log.Info("[getWalletBalancesAndCCData]: Getting from memory")
+			return c.JSON(200, pkg.RESTResp[[]*pkg.WalletBalance]{Data: walletBalancesInMemory})
+		}
+		balances, err := pkg.GetWalletBalancesAndCCData(currency)
+		walletBalancesInMemory = balances
 		if err != nil {
 			return c.JSON(400, pkg.RESTResp[[]*pkg.WalletBalance]{Data: balances, Err: errors.New("error getting balances")})
 		}
