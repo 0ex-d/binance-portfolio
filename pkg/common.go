@@ -51,15 +51,30 @@ type TradePriceAndTimestamp struct {
 	Price     float64
 	Timestamp int
 }
+
 type PortfolioTradeSideStats struct {
-	Last    TradePriceAndTimestamp
-	Highest TradePriceAndTimestamp
-	Lowest  TradePriceAndTimestamp
-	Qty     float64
+	TotalCost float64
+	TotalGain float64
+	Last      TradePriceAndTimestamp
+	Highest   TradePriceAndTimestamp
+	Lowest    TradePriceAndTimestamp
+	Qty       float64
 }
+type LiquidityProviderStats struct {
+	MakerQty int
+	TakerQty int
+}
+
 type PortfolioTradeStats struct {
-	Buy  PortfolioTradeSideStats
-	Sale PortfolioTradeSideStats
+	TotalValue          float64
+	AvgBuyPrice         float64
+	DailyPNL            float64
+	UnrealizedPNL       float64
+	RealizedPNL         float64
+	PortfolioAllocation float64
+	Buy                 PortfolioTradeSideStats
+	Sale                PortfolioTradeSideStats
+	LiquidityProvider   LiquidityProviderStats
 }
 
 func signParams(message, secret string) string {
@@ -149,6 +164,7 @@ func calculateTradeCosts(trades []Trade) PortfolioTradeStats {
 	}
 	portfolioTradeStats := PortfolioTradeStats{
 		Buy: PortfolioTradeSideStats{
+			TotalCost: totalCost,
 			Last: TradePriceAndTimestamp{
 				Price:     lastBuyPrice,
 				Timestamp: lastBuyPriceTs,
@@ -164,6 +180,7 @@ func calculateTradeCosts(trades []Trade) PortfolioTradeStats {
 			Qty: totalBuyQty,
 		},
 		Sale: PortfolioTradeSideStats{
+			TotalGain: totalGain,
 			Last: TradePriceAndTimestamp{
 				Price:     lastSalePrice,
 				Timestamp: lastSalePriceTs,
@@ -176,7 +193,11 @@ func calculateTradeCosts(trades []Trade) PortfolioTradeStats {
 				Price:     lowestSalePrice,
 				Timestamp: lowestSalePriceTs,
 			},
-			Qty: totalBuyQty,
+			Qty: totalSaleQty,
+		},
+		LiquidityProvider: LiquidityProviderStats{
+			MakerQty: totalLpMakerQty,
+			TakerQty: totalLpTakerQty,
 		},
 	}
 
@@ -262,19 +283,16 @@ func GetPortfolioBalancesAndCCData(currency string, walletBalances []*WalletBala
 		}
 		assetTradesMemStore := assetToTradesInMemory[binanceInstrument]
 		tradeStats := calculateTradeCosts(assetTradesMemStore)
-		// var totalCost, totalGain, totalBuyQty, totalSaleQty float64
-		// var totalLpTakerQty, totalLpMakerQty int
-
 		portfolioBalances = append(portfolioBalances, &PortfolioBalance{
-			Symbol:      balance.Symbol,
-			QuoteSymbol: currency,
-			Free:        balance.Free,
-			QuoteValue:  balance.QuoteValue,
-			Price:       balance.Price,
-			PriceFlag:   balance.PriceFlag,
-			// PriceChangeValue:   balance.CurrentDayChange,
-			// PriceChangePercent: balance.CurrentDayChangePercentage,
-			TradeStats: tradeStats,
+			Symbol:             balance.Symbol,
+			QuoteSymbol:        currency,
+			Free:               balance.Free,
+			QuoteValue:         balance.QuoteValue,
+			Price:              balance.Price,
+			PriceFlag:          balance.PriceFlag,
+			PriceChangeValue:   balance.PriceChangeValue,
+			PriceChangePercent: balance.PriceChangePercent,
+			TradeStats:         tradeStats,
 		})
 	}
 	sort.Slice(portfolioBalances, func(i, j int) bool {
